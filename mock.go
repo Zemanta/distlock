@@ -10,8 +10,8 @@ func (mr *MockReleaser) Release() error {
 type MockLocker struct {
 }
 
-func (ml *MockLocker) Lock(string) (Releaser, error) {
-	return &MockReleaser{}, nil
+func (ml *MockLocker) Lock(string) (Releaser, bool, error) {
+	return &MockReleaser{}, true, nil
 }
 
 func (ml *MockLocker) LockWait(string) (Releaser, error) {

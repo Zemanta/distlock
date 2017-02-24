@@ -54,37 +54,39 @@ func NewAearospikeLocker(client *aerospike.Client, namespace string) *AerospikeL
 func (al *AerospikeLocker) LockWait(name string) (Releaser, error) {
 	var err error
 	var releaser Releaser
+	var success bool
 
 	errTries := 0
 	for {
-		releaser, err = al.Lock(name)
-		if err == nil {
-			return releaser, nil
-		}
-
-		if err == ErrLocked {
-			errTries = 0
-		} else if err != nil {
+		releaser, success, err = al.Lock(name)
+		if err != nil {
 			errTries++
 			if errTries > waitRetries {
 				return nil, err
 			}
+		} else {
+			errTries = 0
 		}
+
+		if success == true {
+			return releaser, nil
+		}
+
 		time.Sleep(waitSleep)
 	}
 }
 
-func (al *AerospikeLocker) Lock(name string) (Releaser, error) {
+func (al *AerospikeLocker) Lock(name string) (Releaser, bool, error) {
 	key, err := aerospike.NewKey(al.namespace, "distlock", name)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	lockedTs := time.Now().UTC().Format(time.RFC3339)
 
 	hostname, err := os.Hostname()
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	policy := aerospike.NewWritePolicy(0, aerospikeTTL)
@@ -100,9 +102,9 @@ func (al *AerospikeLocker) Lock(name string) (Releaser, error) {
 	)
 	if err != nil {
 		if aserr, ok := err.(types.AerospikeError); ok && aserr.ResultCode() == types.KEY_EXISTS_ERROR {
-			return nil, ErrLocked
+			return nil, false, nil
 		}
-		return nil, err
+		return nil, false, err
 	}
 
 	stop := make(chan bool)
@@ -127,5 +129,5 @@ func (al *AerospikeLocker) Lock(name string) (Releaser, error) {
 		}
 	}()
 
-	return NewAerospikeReleaser(al, stop, key), nil
+	return NewAerospikeReleaser(al, stop, key), true, nil
 }
